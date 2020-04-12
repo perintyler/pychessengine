@@ -1,4 +1,5 @@
 __pycache__/
-graveyard/
-tests/
 *.pyc
+graveyard/
+rest/
+train/
