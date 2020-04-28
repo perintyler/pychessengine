@@ -1,47 +1,38 @@
-from bitboard import Bitboard
-from random import randrange
-import numpy as np
+# -*- coding: utf-8 -*-
+"""Tests for move generation, board representation, and evaluation
 
-'''Todo:
-    - bitboard test
-    - move validation/generation test (perft)
-    - state tests
-        + piece iteration
-        + update/pop
-        + __str__
-    - eval property func tests
-    - search test. idk how though
-'''
-maxInt = 0xFFFFFFFFFFFFFFFF
+Todo: everything
+"""
+import unittest
+import chess
 
-class BitboardTest:
+def state_to_char_array(state):
+    return ''.join(str(state).split('\n'))
 
-    def test_create_bitboard():
+class TestMoveGeneration(unittest.TestCase):
+    """ self.assertEqual(testVal, realVal) """
+
+    def setUp(self):
+        self.states = []
+        self.charBoards = list(map(state_to_char_array, self.states))
+
+    # def test_pawn_move_generation():
+    #     pass
+
+    def test_rook_move_generation():
         pass
-        
-    # bitboard testing
-    def test_count_bits():
 
-    	for i in range(100):
-    		randomBoardInt = randrange(maxInt)
-    		numOnBits = bin(randomBoardInt).count('1')
-    		bitboard = Bitboard(randomBoardInt)
-    		count = bitboard.count_on_bits()
-    		assert count == numOnBits
-    	print('test on bits passed tests')
+    def test_sliding_piece_move_generation():
 
-    def test_reverse():
-    	for i in range(10):
-    		randomBoardInt = randrange(maxInt)
-    		bitStr = bin(randomBoardInt)[2:]
-    		reversedBitStr = reversed(bitStr)
+        pass
 
-    		bitboard = Bitboard(randomBoardInt)
-    		reversedBB = reversed(bitboard)
-    		binaryStr = np.binary_repr(reversedBB.bits)
-    		assert binaryStr == reversedBitStr
+    def test_easy_move_generation(self):
+        """ Knight and King """
+
+
+        self.assertEqual(True,True)
+
+
 
 if __name__ == '__main__':
-	pass
-	# test_reverse()
-	# test_is_bit_on()
+	unittest.main()

@@ -1,266 +1,165 @@
 # -*- coding: utf-8 -*-
-"""Positional Evaluation
+"""Positional Evaluation"""
 
+import operator
 
-TODO:
-https://www.chessprogramming.org/Tapered_Eval
+import chess.pregame
 
-"""
+WEIGHTS = (
+	10, 	 # Material
+	0.01,	 # Piece Square Table Values
+	0.01, 		 # development
+	5, 		 # Center Control
+	1, 		 # Connectivity
+	3, 		 # Mobility
+	0.2,	 # Bishop Pair bonus
+	2,		 # Pawn structure score
+	1, 		 #pressure
+)
+WEIGHTS = tuple([w/50 for w in WEIGHTS]) # TEMP
 
-from pregame.data import PST_LOOKUP
-
-MODES = [LAZY, DEFAULT, EAGER] = range(3)
-
-NUM_PROPERTIES = 13
-PROPERTIES = (MATERIAL, PIECE_SQUARE_VALUES, CENTER_CONTROL,
-			  CONNECTIVTY, MOBILITY, BISHOP_PAIR, PAWN_STRUCTURE,
-			  DEVELOPMENT, PRESSURE, CONNECTED_ROOKS, KING_SAFETY,
-			  OUTPOSTS, CASTLE_DISTANCE) = range(NUM_PROPERTIES)
-
-LAZY_EVALUATION_PROPERTIES = ()
-NORMAL_EVALUATION_PROPERTIES = ()
-EAGER_EVALUATION_PROPERTIES = ()
-
-DEFAULT_SETTINGS = {}
-
-# move values/weights to file
 PIECE_VALUES = (
 	1,  # PAWN
 	3,  # BISHOP
 	3,  # KNIGHT
 	5,  # ROOK
 	9,  # QUEEN
-	100 # KING
+	0 	# KING
 )
-
-# importance of reach property
-WEIGHTS = (
-	70, 	# Material
-	0.01,	 # Piece Square Table Values
-	1, 			# Center Control
-	3, # Connectivity
-	# 2.2, # Mobility
-	0.2, # Bishop Pair bonus
-	2, # Pawn structure score
-	# 3, # Development
-	1, #pressure
-)
-
-MIN_PIECE_SQUARE_VALUE = -50
-MAX_PIECE_SQUARE_VALUE = 50
-
-# (PST_LOOKUP,
-#  CENTER_SQUARE_MASKS,
-#  OUTER_CENTER_SQUARE_MASKS) = load_evaluation_data_file()
 
 class Evaluator:
 	"""Positional Evaluator
 
-	Evaluation mode (LAZY,DEFAULT,EAGER) can be set to
-	determine which evaluation properties are used. Use
-	:meth __call__: to get an evalution. Then, by using
-	:meth process_move:, the evaluation for the updated
-	board state can be retrieved without having to fully
-	recompute all evaluation properties.
+	A positive score indicates white is winning, while a negative score
+	means black is winning. Evaluation features used are Material, Piece
+	Square Tables, Center Control, Mobility, Connectivity, Development
 	"""
 
-	def __init__(self, mode=LAZY):
+	MODES = [LAZY, NORMAL, EAGER] = range(3)
+
+	def __init__(self, mode = LAZY):
 		self.mode = mode
-		self.scores = []
 
-	def __call__(self,state):
-		if 	 self.mode == LAZY:   self.lazy_evaluate(state)
-		elif self.mode == NORMAL: self.normal_evaluate(state)
-		elif self.mode == EAGER:  self.eager_evaluate(state)
+		self.pieceSquareTables = chess.pregame.load_piece_square_tables()
+		self.masks = chess.pregame.load_evaluation_masks()
 
-		# Dot Product scores and weights
-		return sum(score*weight for score,weight in zip(self.scores, WEIGHTS))
+		self.pieceValues = PIECE_VALUES
+		self.weights = WEIGHTS
 
-	def process_move(self,move):
-		pass
+		self.memo = {}
 
-	def lazy_evaluate(self, state):
-		NUM_LAZY_PROPERTIES = 2
-		self.scores = [0]*NUM_LAZY_PROPERTIES
-		self.count_material(state)
-		self.count_pst(state)
+	def __call__(self, state, *args):
+		"""Main Evaluation function"""
 
-	def normal_evaluate(self):
-		pass
+		if state in self.memo:
+			return self.memo[state]
 
-	def eager_evaluate(self):
-		pass
+		scores = map(lambda f: f(state,*args), self.get_scores())
+		dot_product = lambda l1,l2: sum(v1*v2 for v1,v2 in zip(l1,l2))
+		valuation = dot_product(scores, self.weights)
 
-	def count_material(self,state):
+		self.memo[state] = valuation
+
+		return valuation
+
+	def score(func):
+		"""Evaluation Feuture to be used in the Linear Combination"""
+		def decorator(self, *args):
+			whiteScore = func(self, 0, *args)
+			blackScore = func(self, 1, *args)
+			return whiteScore - blackScore
+		return decorator
+
+	@score
+	def material(self, color, state, *args):
 		"""Piece Value Sum
 
-		Material is the most heavily weighted factor of a positional
-		evaluation function. Each piece has a value indicating its worth.
 		Pawn: 1 -- Knight: 3 -- Bishop: 3 -- Rook: 5 -- Queen: 9
 		"""
-		materialSums = [0,0]
-		for piece,pieceType,color in state.get_pieces():
-			materialSums[color] += PIECE_VALUES[pieceType]
-		self.scores[MATERIAL] = materialSums[1] - materialSums[0]
+		pieceValues = map(lambda p: self.pieceValues[p[1]],
+						  state.pieces.get_color(color))
+		return sum(pieceValues)
 
-	def count_pst(self, state):
+	@score
+	def piece_square_value(self, color, state, *args):
 		"""Piece-Square Value Sum
 
 		For each piece, a piece square table contains a score for every
 		square indicating the strength of a square for that piece.
-
-		https://www.chessprogramming.org/Piece-Square_Tables
 		"""
-		pstSums = [0,0]
-		for piece,pieceType,color in state.get_pieces():
-			pstSums[color] += PST_LOOKUP[color][pieceType][piece]
-		self.scores[PIECE_SQUARE_VALUES] = pstSums[1] - pstSums[0]
+		pst_values = map(lambda p: self.pieceSquareTables[color][p[1]][p[0]],
+						 state.pieces.get_color(color))
+		return sum(pst_values)
 
-	# def compute_connectivity(self, attacks, state):
-	# 	"""Piece Connectivity
-	#
-	# 	Determined by the number of occurances of a piece defending another.
-	# 	:param attacks: 2-tuple with lists of piece attack sets for white/black
-	# 	"""
-	# 	pass
-	#
-	# def compute_center_control(self, attacks):
-	# 	"""Sum of the amount of pieces attacking center squares
-	#
-	# 	:param attacks: 2-tuple with lists of piece attack sets for white/black
-	# 	"""
-	# 	pass
-	#
-	# # Mobility is computed using the number of legal moves for
-	# # each side. Since moves are only generated by the moving
-	# # player, the number of legal moves for the non moving player
-	# # is determined by using the previous position
-	# def compute_mobility(self,position, numWhitePieces, numBlackPieces):
-	# 	if position.last is None:
-	# 		mobility = 0
-	# 	else:
-	# 		movingPlayerMobility = position.numMoves# len(position.children)
-	# 		otherPlayerMobility = position.last.numMoves#len(position.parent.children)
-	# 		if position.board.colorToMove == 0: # WHITE
-	# 			whiteMobility = movingPlayerMobility
-	# 			blackMobility = otherPlayerMobility
-	# 		else:
-	# 			whiteMobility = otherPlayerMobility
-	# 			blackMobility = movingPlayerMobility
-	# 		whiteMobility /= numWhitePieces
-	# 		blackMobility /= numBlackPieces
-	# 		mobility = whiteMobility - blackMobility
-	# 	return mobility
-	#
-	# def compute_connectivity(self,white, black, numWhitePieces, numBlackPieces):
-	# 	whiteConnectivity = white.connectivity / numWhitePieces
-	# 	blackConnectivity = black.connectivity / numBlackPieces
-	# 	return whiteConnectivity - blackConnectivity
-	#
-	# def compute_pressure(self,white,black):
-	# 	return white.numAttacks - black.numAttacks
-	#
-	# def compute_bishop_pair_bonus(self,white,black):
-	# 	# returns 1 if only white has bishop pair, 0 if both or neither
-	# 	# black and white have bishop pair, and -1 if only black has it
-	# 	return white.has_bishop_pair() - black.has_bishop_pair()
-	#
-	#
-	# # counts the number of doubled pawns, isolated pawns, and center pawns
-	# def compute_pawn_structure(self, state):
-	# 	"""counts doubled, isolated, and center pawns
-	# 	faster to loop through pawns with file mask and comp to 0
-	# 	"""
-	# 	numWhiteDoubledPawns = numBlackDoubledPawns = 0
-	# 	numWhiteIsoPawns = numBlackIsoPawns = 0
-	# 	whitePawnCounts,blackPawnCounts = [],[]
-	# 	for file in range(8):
-	# 		fileMask = get_file_mask(file)
-	# 		numWhitePawns = (white.pawns & fileMask).count_on_bits()
-	# 		numBlackPawns = (black.pawns & fileMask).count_on_bits()
-	# 		whitePawnCounts.append(numWhitePawns)
-	# 		blackPawnCounts.append(numBlackPawns)
-	#
-	# 	for file in range(8):
-	# 		numWhitePawns = whitePawnCounts[file]
-	# 		numBlackPawns = blackPawnCounts[file]
-	#
-	# 		# check for doubled pawns
-	# 		if numWhitePawns > 1: numWhiteDoubledPawns += 1
-	# 		if numBlackPawns > 1: numBlackDoubledPawns += 1
-	#
-	# 		# use neighbor files to check for isolated pawns
-	# 		if file == 0: neighbors = [ file+1 ]
-	# 		elif file == 7: neighbors = [ file-1 ]
-	# 		else: neighbors = [ file-1, file+1 ]
-	# 		whiteHasNeighbor = blackHasNeighbor = False
-	# 		for neighborFile in neighbors:
-	# 			if whitePawnCounts[neighborFile] == 0:
-	# 				whiteHasNeighbor = True
-	# 			if blackPawnCounts[neighborFile] == 0:
-	# 				blackHasNeighbor = True
-	# 		if numWhitePawns != 0 and whiteHasNeighbor == False:
-	# 			numWhiteIsoPawns += 1
-	# 		if numBlackPawns != 0 and blackHasNeighbor == False:
-	# 			numBlackIsoPawns += 1
-	#
-	# 	# count the number of center pawns on files 3 and 4
-	# 	numWhiteCenterPawns = whitePawnCounts[3] + whitePawnCounts[4]
-	# 	numBlackCenterPawns = blackPawnCounts[3] + blackPawnCounts[4]
-	#
-	# 	# More center pawns should increase the pawn score, and more
-	# 	# doubled and isolated pawns decrease pawn score.
-	# 	# Pawn score = center pawns - doubled pawns - iso pawns
-	# 	whitePawnScore = numWhiteCenterPawns
-	# 	whitePawnScore -= (numWhiteDoubledPawns + numBlackIsoPawns)
-	#
-	# 	blackPawnScore = numBlackCenterPawns
-	# 	blackPawnScore -= (numBlackDoubledPawns + numBlackIsoPawns)
-	#
-	# 	return whitePawnScore - blackPawnScore
-	#
-	# # https://www.chessprogramming.org/King_Safety#Patterns
-	# def compute_king_safety(self): pass
-	# # temp bonus can be added if chosen node is PV node
-	# def get_tempo(self): pass
-	#
+	@score
+	def development(self, color, state, *args):
+		"""Piece Development"""
+		isPieceDeveloped = lambda mask: mask & state.colors[color] == 0
+		return sum(map(isPieceDeveloped, self.masks.minorPieceSquares[color]))
+
+	@score
+	def center_control(self, color, state, attacks):
+		"""Determined by the number of center squares attacked
+
+		Center squares are D4, E4, D5, E5.
+		"""
+		def countCenterSquares(attack):
+			isAttackingSquare = lambda square: attack & square != 0
+			return sum(map(isAttackingSquare, self.masks.centerSquares))
+		return sum(map(countCenterSquares, attacks[color]))
+
+	@score
+	def connectivity(self, color, state, attacks):
+		"""Indicates how well pieces are working together"""
+		def countDefences(attack):
+			isDefendingPiece = lambda p: p[0] & attack != 0
+			return sum(map(isDefendingPiece, state.pieces.get_color(color)))
+		return sum(map(countDefences, attacks[color]))
+
+	@score
+	def mobility(self, color, state, attacks):
+		"""Amount of legal moves"""
+		def count_bits(bitboard):
+			count = 0
+			while(bitboard):
+				bitboard &= bitboard - 1
+				count += 1
+			return count
+		return sum(map(count_bits, attacks[color]))
+
+	@score
+	def king_safety(self, state, attacks, color):
+		"""TODO"""
+		pass
+
+	@score
+	def pawn_structure(self, state, attacks, color):
+		"""TODO"""
+		pass
+
+	@score
+	def pressure(self, state, attacks, color):
+		"""TODO"""
+		pass
 
 
-	# def __call__(self,state):
-		# material is most important component to evaluation
-		# material = count_material_difference(white,black)
+	def get_scores(self):
+		"""Gets scores used for an evaluation mode
 
-		# pst, connectivity, and balance are correlated
-		# to the number of pieces a player has. Since material
-		# already takes the number of pieces into account,
-		# the values for each color should be divided by
-		# their respective number of pieces
-		# pst = count_pst_values(white,black,numWhitePieces,numBlackPieces)
-		# connectivity = get_connectivity(white,black,numWhitePieces,numBlackPieces)
-		# mobility = get_mobility(position,numWhitePieces,numBlackPieces)
+		Modes include Lazy, normal, eager
+		"""
 
-		# these values are not correlated to the number of pieces
-		# and are more important in the opening than in the midgame
-		# centerControl = get_center_control(white,black)
-		# development = get_development(white,black)
+		# Lazy Evaluation
+		yield from (self.material,
+					self.piece_square_value)
+		if self.mode == Evaluator.LAZY: return
 
-		# bonuses
-		# bishopPairBonus = get_bishop_pair_bonus(white,black)
-		# pawnStructureScore = get_pawn_structure_score(white,black)
-		# pressure = get_pressure(white,black)
-		# scores = [
-		#     material,
-		# 	pst,
-		# 	centerControl,
-		# 	connectivity,
-		# 	# mobility,
-		# 	bishopPairBonus,
-		# 	pawnStructureScore,
-		# 	# development,
-		# 	pressure,
-		# ]
-		# position.board.temp = scores
-		# apply constants to scores
-		# valuation = chess.tools.dot_product(scores,CONSTANTS)
-		# valuation = self.count_material(state)
-		# return valuation
+		# Normal Evaluation
+		yield from (self.development,
+					self.center_control)
+		if self.mode == Evaluator.NORMAL: return
+
+		# Eager Evaluation
+		yield from (self.king_safety,
+					self.pawn_structure,
+					self.pressure)

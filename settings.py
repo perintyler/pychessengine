@@ -1,30 +1,17 @@
-"""Engine Settings
-
-Include search Mode, initial position, and
-piece string representation type.
-"""
+# -*- coding: utf-8 -*-
+"""Engine Settings"""
 
 DEBUG = True
 
+# If true, the engine plays against itself.
+# If False, the engine plays against a user
+COMPUTER_PLAY = True
+
+# How many moves ahead the engine searches
+SEARCH_DEPTH = 5
+
 # Data files created during pregame setup.
 DATA_DIRECTORY = 'data'
-
-DATA_FILES = (
-    BOARD_DATA_FILE, MOVE_DATA_FILE,
-    MASK_DATA_FILE, EVALUATION_DATA_FILE
-) = (
-    'board.json', 'moves.json',
-    'masks.json', 'evaluate.json'
-)
-
-# This determines engine search depth. If
-# search mode is 'time,' the engine stops
-# searching for a move after a static amount
-# of time. If search mode is 'plies,' the
-# engine stops searching based on a set amount
-# of moves deep relative to current position.
-SEARCH_TYPES = ['time','plies','ponder']
-SEARCH_MODE = 'plies'
 
 # used for pregame setup to create initial piece
 # bitboards in pregame/generate/board.py. To
@@ -32,23 +19,22 @@ SEARCH_MODE = 'plies'
 # array and delete board.json. Rerunning the
 # engine will then regenerate data/board.json
 INITIAL_POSITION = [
-    'R', 'N', 'B', 'K', 'Q', 'B', 'N', 'R',
-    'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P',
-    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
-    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
-    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
-    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+    'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r',
     'p', 'p', 'p', 'p', 'p', 'p', 'p', 'p',
-    'r', 'n', 'b', 'k', 'q', 'b', 'n', 'r'
+    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+    'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P',
+    'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R',
 ]
 
-# determines the strings used to print pieces
-# when chess.board.State.__str__ is called
+# for printing board.State
 PIECE_PRINT_MODE = 'UNICODE'
 PIECE_REPRESENTATION = {
     'UNICODE': (
-        ['♟', '♞', '♝','♜', '♛', '♚'],
-        ['♙', '♘', '♗', '♖', '♕', '♔']
+        ['♙', '♘', '♗', '♖', '♕', '♔'],
+        ['♟', '♞', '♝','♜', '♛', '♚']
     ),
     'CHARS': (
         ['P', 'N', 'B', 'R', 'Q', 'K'],

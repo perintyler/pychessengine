@@ -1,281 +1,193 @@
 # -*- coding: utf-8 -*-
-""" Best Move Search
+"""Game Tree Search"""
 
-# TODO:
-- move hash to board.py
-- get rid of position/tree
-- https://www.chessprogramming.org/Iterative_Deepening
-"""
-from data.hash_key import RANDOM_ARRAY as ZOBRIST_HASH_TABLE
-from chess import move, PositionEvaluator, board
-from debug_tools import *
+from time import time
 
-# from chess import board
-# from chess import move
+import settings
+import chess.moves
+import chess.board
 
-# from chess.evaluate import Evaluator
+from debug import *
 
-NODE_TYPES = (
-	PRINCIPLE_VARIATION,
-	FAIL_HIGH,
-	FAIL_LOW
-) = range(3)
+monitor = SearchMonitor() # Debug Tool
+builder = TreeBuilder()   # Debug Tool
 
-SEARCH_DEPTH = 3
-#
-# class Position:
-# 	'''Search Node'''
-#
-# 	def __init__(self, state, depth, isQuiet=True):
-# 		self.state = state
-# 		self.depth = depth
-# 		self.isNull = False
-# 		self.generator = MovesGenerator(state)
-# 		self.evaluator = chess.PositionEvaluator()
-# 		self.valuation = None
-# 		self.moves = None
-# 		# quiet positions did not from capture
-# 		self.isQuiet = isQuiet
-# 		self.maximize = self.state.colorToMove == WHITE
-#
-# 	@property
-# 	def edges(self):
-# 		yield from self.generator.find_moves(self.state)
-#
-# 	@property
-# 	def children(self):
-# 		'''Generates all possible positions resulting from legal moves'''
-# 		nextPositions = []
-# 		for move in self.edges:
-# 			pieces = self.state.serialize(move)
-#
-# 			updatedBoard = board.State(not self.state.colorToMove, pieces)
-# 			nextPositions.append(Position(updatedBoard,self.depth+1))
-# 		return nextPositions
-#
-# 	def evaluate(self):
-# 		# self.evaluater.process_pieces(self.state.get_pieces())
-# 		self.valuation = self.evaluator(self.state, self.generator.moves)
-#
-# 	def __repr__(self):
-# 		return f'<Position: valuation: {self.valuation} depth: {self.depth}>'
-#
-# 	# define comparison operators using the positions valuation
-# 	def __lt__(self, other): return self.valuation < other.valuation
-# 	def __le__(self, other): return self.valuation <= other.valuation
-# 	def __gt__(self, other): return self.valuation > other.valuation
-# 	def __ge__(self, other): return self.valuation >= other.valuation
-# 	def __eq__(self, other): return self.valuation == other.valuation
-#
-#
-# class NullPositionSearchedError(Exception): pass
-#
-# class NullPosition(Position):
-#
-# 	def __init__(self, maximize):
-# 		self.valuation = float('-inf' if maximize else 'inf')
-# 		self.isNull = True
-#
-# 	def get_next(self): raise NullPositionSearchedError('null children')
-#
-# 	def evaluate(self): raise NullPositionSearchedError('null evaluation')
+MAX_VALUE = 1000
 
-monitor = SearchMonitor()
+def explore_leaves(state, evaluator, generator,
+				   maximize, alpha, beta, depth,
+				   maxDepth, maxValue, isQuiet=True):
+	"""Minimax Alpha-Beta Search
 
-class MoveQueue:
-	"""Priority Queue"""
-	def __init__(self): pass
+	This recursive function preforms a depth first tree search. The nodes
+	on the tree are represented as a board State object, and the edges on the
+	tree are represented as moves.
 
-class Node:
+	The root state node is never copied, but rather, it is updated and passed
+	on to searches of the children nodes. When the max search depth is reached,
+	the leaves are evaluated and compared, and then the moves are reverted as
+	the recursive calls collapse.
+	"""
 
-	def __init__(self, value):
-		self.value = value
+	attacks,attackSets = generator.find_attacks(state)
 
-	@property
-	def edges(self):
-		pass
+	# recursive base case. Leaf has been reached. Return its valuation.
+	if depth >= maxDepth and isQuiet:
+		return evaluator(state, attacks)
 
-	@property
-	def children(self):
-		pass
-
-
-# check for alpha-beta cutoff. If alpha is greater than beta,
-# the opponents optimal worst outcome is better than own optimal
-# worst outcome. The branch is guaranteed to be suboptimal and
-# should not be searched any deeper.
-def minimax(maximize, state, alpha, beta, depth, maxDepth, firstMove=None):
-	""" todo pass move generator and position evaluator in parameters so
-	moves and evaluations can be updated, non computed from scratch"""
-	# recursive base case: max depth reached
-	if depth >= maxDepth:
-		# print('\n'.join(['-'*10,'evaluation: ' + str(val),str(state),'-'*10]))
-		return PositionEvaluator()(state)
-	# print(f'alpha,beta: ({alpha.valuation},{beta.valuation})')
 	monitor.node_searched(depth)
-	bestValue = float('-inf') if maximize else float('inf')
-	generator = move.Generator(state)
-	for edge in generator.find_moves(state):
-		if depth == 0: firstMove = edge
 
-		child = board.State(not state.colorToMove, state.serialize(edge))
+	# only search captures if depth surpassed max depth
+	moves = generator.find_moves(state, attacks, attackSets,
+								 onlyCaptures = depth > maxDepth)
 
-		# print('\n'.join(['-'*10,str(child),'-'*10]))
-		# recursively call minimax on the child before comparing
-		# it to its siblings to perform depth first search
-		value = minimax(not maximize,
-					    child, alpha, beta,
-					   	depth+1, maxDepth,
-					   	firstMove)
+	if len(moves) == 0:
+		assert depth > maxDepth
+		return evaluator(state, attacks)
 
+	# sorting moves everytime seems to speed things up
+	moveOrder = []
+	while len(moves) > 0:
+		m = moves.pop()
+		state+=m
+		v = evaluator(state,attacks)
+		moveOrder.append((v,m))
+		state-=m
+	moves = sorted(moveOrder, key=lambda x:x[0], reverse=state.colorToMove==1)
+	moves = [m[1] for m in moves]
+
+	# beam search
+	if depth == maxDepth-1: moves = moves[-10:]
+	# if depth == maxDepth-2: moves = moves[-10:]
+
+	# initilize best as worst value
+	best = -maxValue if maximize else maxValue
+	bestMove = None
+
+	# search edges until alpha/beta cutoff occurs
+	while beta > alpha and len(moves) > 0:
+
+		# get the highest priority move from the move queue
+		move = moves.pop()
+
+		# get child node by updating state
+		state += move
+
+		# make recursive call to perform depth first search
+		value = explore_leaves(state, evaluator, generator,
+							   not maximize, alpha, beta,
+							   depth+1, maxDepth, maxValue,
+							   isQuiet = move.captureType is None)
+		# revert state
+		state -= move
+
+		# maximize white and minimize black
 		if maximize:
-			bestValue = max(value, bestValue)
-			alpha = max(alpha, bestValue)
-			if beta<=alpha:
-				monitor.alpha_cutoff()
-				break
+			best = max(value, best)
+			alpha = max(alpha, best)
+			bestMove = move
 		else:
-			bestValue = min(value, bestValue)
-			beta = min(beta,bestValue)
-			if beta<=alpha:
-				monitor.beta_cutoff()
-				break
-	return firstMove if depth == 0 else bestValue
+			best = min(value, best)
+			beta = min(beta,best)
+			bestMove = move
 
-class Tree:
-	'''Decision Tree'''
+	if beta<=alpha: monitor.cutoff(maximize)
 
-	def __init__(self,root,maxSearchDepth=5):
-		# crawl
-		self.root = root
-		self.maxSearchDepth = maxSearchDepth
+	# if depth is 0, the search is complete
+	return bestMove if depth == 0 else best
 
-	def explore_leaves(self):
-		alpha = float('-inf')
-		beta = float('inf')
-		firstMove = None
-		rootValue = PositionEvaluator()(self.root)
-		rootDepth = 0
-		maximizeRoot = self.root.colorToMove == 0 # maximize white
+def make_best_move(state, evaluator, generator):
+	alpha,beta = -MAX_VALUE,MAX_VALUE
+	maximizeRoot = not state.colorToMove # maximize white
+	depth,maxDepth = 0,settings.SEARCH_DEPTH
 
-		bestMove = minimax(maximizeRoot,
-						   self.root, alpha, beta,
-						   rootDepth, self.maxSearchDepth)
+	bestMove = explore_leaves(state, evaluator, generator,
+							  maximizeRoot, alpha, beta,
+							  depth, maxDepth, MAX_VALUE)
+	state += bestMove
 
-		print('best move')
+def play_computer_game():
+
+	MAX_MOVES = 35
+
+	state = chess.board.create_initial_position()
+	generator = chess.moves.Generator()
+	evaluator = chess.board.Evaluator()
+
+	movesMade = 0
+	while movesMade < MAX_MOVES:
+		movesMade += 1
+		start = time.time()
+		make_best_move(state, evaluator, generator)
+		end = time.time()
+		print('found move in ' + str(end - start) + ' seconds')
+
 		monitor.print_results()
-		newColor = not self.root.colorToMove
-		return board.State(newColor, self.root.serialize(bestMove))
+		monitor.reset()
+		# evaluator.debugMode = True
+		valuation = evaluator(state, generator.find_attacks(state)[0])
+		# evaluator.debugMode  = False
+		print('valuation: ' + str(valuation))
+		print(state)
+
+def play_against_computer():
+	state = chess.board.State.create_initial_position()
+	evaluator = chess.board.Evaluator()
+	generator = chess.moves.Generator()
+
+	print(state)
+	while True:
+
+		def getUserMove():
+			def parseUserMove(state):
+				ui = input('enter move\n')
+				if ui=='q':
+					import sys
+					sys.exit(0)
+				def parseSquare(str):
+					file = 'abcdefgh'.index(str[0])
+					rank = 8-int(str[1])
+					return rank*8 + file
+				# try:
+				return parseSquare(ui[0:2]), parseSquare(ui[2:4])
+				# except:
+				# 	print('invalid inputç')
+				# 	parseUserMove(state)
 
 
-def for_best_move(boardState):
-	return Tree(boardState).explore_leaves()
+			# state = parseUserMove(state, ui)
 
-class Hash:
-	'''Zobrist Hash'''
+			start,end = parseUserMove(state)
 
-	def __init__(self):
-		self.memo = {}
+			foundMove = False
+			pieces = []
+			for i in range(32):
+				p = state.pieces[i]
+				loc = get_piece_location(p)
+				if loc == start:
+					pieces.append(1 << (63-end))
+					foundMove = True
+				elif loc == end:
+					pieces.append(0)
+				else:
+					pieces.append(p)
 
-	def contains(self, state):
-		pass
+			if not foundMove:
+				return getUserMove()
+			else:
+				return chess.board.State(not state.colorToMove, pieces)
+		state = getUserMove()
+		print(state)
 
-	def add(self, state, valuation, moves):
-		pass
+		start = time.time()
+		make_best_move(state, evaluator, generator)
+		end = time.time()
+		print('found move in ' + str(end - start) + ' seconds')
 
-	def update_hash_value(self, previousStateHash, move,
-						   movedPieceType, removedPieceType):
-
-		boardHash = previousStateHash
-		colorOut = not state.colorToMove
-		# XOR out the previous piece
-		boardHash ^= ZOBRIST_HASH_TABLE[self.get_piece_hash_index(move.startSquare,
-														 	  movedPieceType,
-														 	  colorOut)]
-		'''colors may be wrong here'''
-		# XOR in the updated piece
-		boardHash ^= ZOBRIST_HASH_TABLE[self.get_hash_index(move.endSquare,
-													   	movedPieceType,
-													   	colorOut)]
-
-		# if move was a capture, XOR out captured piece
-		if removedPieceType is not None:
-			boardHash ^= ZOBRIST_HASH_TABLE[self.get_hash_index(piece.endSquare,
-															removedPieceType,
-															state.colorToMove)]
-
-		return boardHash
-
-	def compute_hash_value(self, state):
-		'''initial  hash'''
-		boardHash = 0
-		for piece, pieceType, color in state.pieces.all:
-			if piece == 0: continue
-			pieceIndex = self.get_piece_hash_index(piece,pieceType,color)
-			boardHash ^= ZOBRIST_VALUES[pieceIndex]
-		return boardHash
-
-	def get_hash_index(self, piece, pieceType, pieceColor):
-		pieceIndex = pieceType+1
-		pieceTypeMultiplier = 64 if color==WHITE else 64*2
-		squareForPiece = SQUARE_LOOKUP[piece]
-		return pieceTypeMultiplier*pieceType + squareForPiece
-
-
-
-
-# class Tree:
-# 	''' Decision Tree '''
-#
-# 	def __init__(self, board, maxSearchDepth=3):
-# 		self.root = Position(board, 0)
-# 		self.cutoffs = 0
-# 		self.leavesSearched = 0
-# 		self.maxSearchDepth = maxSearchDepth
-#
-# 	def get_max_depth(self):
-# 		return self.root.depth + self.maxSearchDepth
-#
-# 	def get_best_move(self):
-# 		# initial search values (alpha: -inf, beta: inf)
-# 		maximizeRoot = self.root.state.colorToMove == WHITE
-# 		alpha = NullPosition(True) # -inf
-# 		beta = NullPosition(False) # inf
-# 		maxDepth = self.get_max_depth()
-# 		# call the minimax function
-# 		bestPosition = minimax(self.root, alpha, beta, maximizeRoot, maxDepth, None)
-# 		self.root = bestPosition
-# 		monitor.print_results()
-# 		print(zobrist)
-		# assert optimalLeaf.board.colorToMove == WHITE
-		# The optimal leaf is a decendant of the position created by the
-		# best move. To get optimal position, iterate backwards through tree
-		# optimalPosition = optimalLeaf.get_ancestor(self.root.depth+1)
-		# print('leaf color: ' + str(optimalLeaf.board.colorToMove))
-		# before returning the board of the optimal position, update
-		# root allowing for subsequent calls to get next best position
-		# self.update_root(optimalPosition)
-		# return optimalPosition.lastMove, optimalPosition.board
-		# return bestPosition.state
-
-	# def update_with_move(self, move):
-	# 	if self.root.children is None:
-	# 		self.root.create_children()
-	# 	for child in self.root.children:
-	# 		lastMove = child.lastMove
-	# 		sameStart = move.piece.square == lastMove.piece.square
-	# 		sameDest = move.endSquare == lastMove.endSquare
-	# 		if sameStart and sameDest:
-	# 			self.update_root(child)
-	# 			return self.root.board
-	# 	assert False
-
-	# def printValueTemps(self):
-	# 	bleh = ['Material','PST','Center Control','Connectivity','Mobility','Bishop Pair Bonus', 'Pawn Structure', 'Development','Pressure']
-
-	# 	printStr = 'valuation: ' + str(self.root.valuation) + '\n'
-	# 	for v,c,b in zip(self.root.valueTemps, CONSTANTS, bleh):
-	# 		score = v*c
-	# 		# printStr += f'\t{b}: {score}\n'
-	# 		printStr += '\t' + str(b) + ': ' + str(score) + '\n'
-	# 	print(printStr)
+		# monitor.print_results()
+		# monitor.reset()
+		# evaluator.debugMode = True
+		valuation = evaluator(state, generator.find_attacks(state)[0])
+		# evaluator.debugMode  = False
+		print('valuation: ' + str(valuation))
+		print(state)

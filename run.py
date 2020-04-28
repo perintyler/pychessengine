@@ -1,25 +1,17 @@
+# -*- coding: utf-8 -*-
+"""Engine Entry Point"""
 
+import settings
+import chess
 
-def play():
-    from chess import board,search
-    import time
+def main():
+    chess.setup()
 
-    state = board.State.INITIAL
+    if settings.COMPUTER_PLAY:
+        chess.play_computer_game()
+    else:
+        chess.play_against_computer()
 
-    while True:
-        print(state)
-        start = time.time()
-        state = search.for_best_move(state)
-        end = time.time()
-        print('found move in ' + str(end - start) + ' seconds')
 
 if __name__ == "__main__":
-    # import multiprocessing as mp
-    # mp.set_start_method('spawn')
-
-    import pregame
-
-    if not pregame.is_complete():
-        from setup import setup_data_files
-        setup_data_files()
-    play()
+    main()

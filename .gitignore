@@ -3,3 +3,4 @@ __pycache__/
 graveyard/
 rest/
 train/
+gy.py
