@@ -5,217 +5,216 @@ from collections import namedtuple, deque
 from functools import reduce
 import operator
 
-from chess.evaluate import Evaluator
+from chess.evaluate import Evaluator # for visibility/readibility
 from settings import PIECE_REPRESENTATION
 import chess.pregame
-
-from debug import *
 
 class InvalidPieceOperation(Exception): pass
 class PieceNotFoundException(Exception): pass
 
 class PieceSet(list):
-	"""Piece List Representation
+  """Piece List Representation
 
-	Includes functionality for piece iteration, update, insert, and remove.
-	Pieces will always be stored in the same index for any given board state.
-	When a piece is captured, its index will store as an empty bitboard. This
-	allows for fast piece type lookup and iteration.
-	"""
+  Includes functionality for piece iteration, update, insert, and remove.
+  Pieces will always be stored in the same index for any given board state.
+  When a piece is captured, its index will store as an empty bitboard. This
+  allows for fast piece type lookup and iteration.
+  """
 
-	def __init__(self, *args):
-		list.__init__(self, *args)
+  def __init__(self, *args):
+    list.__init__(self, *args)
 
-		# self.emptySlots = deque()
+    # self.emptySlots = deque()
 
-		(self.numPieces,
-		 self.typeLookup,
-		 self.colorLookup,
-		 self.colorRanges) = chess.pregame.load_piece_index_values()
+    (self.numPieces,
+     self.typeLookup,
+     self.colorLookup,
+     self.colorRanges) = chess.pregame.load_piece_index_values()
 
-	def __iter__(self):
-		"""Iterates each piece's bitboard, color, and type.
+  def __iter__(self):
+    """Iterates each piece's bitboard, color, and type.
 
-		Captured pieces, which are set to zero, are skipped.
-		"""
-		for index in range(self.numPieces):
-			piece = self[index]
-			if piece == 0: continue
-			pieceType = self.typeLookup[index]
-			pieceColor = self.colorLookup[index]
-			yield piece, pieceType, pieceColor
+    Captured pieces, which are set to zero, are skipped.
+    """
+    for index in range(self.numPieces):
+      piece = self[index]
+      if piece == 0: continue
+      pieceType = self.typeLookup[index]
+      pieceColor = self.colorLookup[index]
+      yield piece, pieceType, pieceColor
 
-	def update(self, p0, p1, color):
-		"""Updates a piece"""
-		start,end = self.colorRanges[color]
-		for index in range(start,end):
-			piece = self[index]
-			if piece == p0:
-				self[index] = p1
-				return self.typeLookup[index]
-		raise InvalidPieceOperation(f'cannot update piece')
+  def update(self, p0, p1, color):
+    """Updates a piece"""
+    start,end = self.colorRanges[color]
+    for index in range(start,end):
+      piece = self[index]
+      if piece == p0:
+        self[index] = p1
+        return self.typeLookup[index]
+    raise InvalidPieceOperation(f'cannot update piece')
 
-	def insert(self, piece, pieceType, color):
-		"""Inserts a piece by finding an empty slot"""
-		start,end = self.colorRanges[color]
-		for index in range(start,end):
-			# slot must be empty and the index must be for
-			# the correct type of the piece to be inserted
-			indexCanStorePiece = (self[index] == 0
-								  and self.typeLookup[index]  == pieceType
-								  and self.colorLookup[index] == color)
+  def insert(self, piece, pieceType, color):
+    """Inserts a piece by finding an empty slot"""
+    start,end = self.colorRanges[color]
+    for index in range(start,end):
+      # slot must be empty and the index must be for
+      # the correct type of the piece to be inserted
+      indexCanStorePiece = self[index] == 0 \
+                       and self.typeLookup[index]  == pieceType \
+                       and self.colorLookup[index] == color
 
-			if indexCanStorePiece:
-				self[index] = piece
-				return
-		raise InvalidPieceOperation(f'cannot insert piece')
+      if indexCanStorePiece:
+        self[index] = piece
+        return
+    raise InvalidPieceOperation(f'cannot insert piece')
 
-	def remove(self, piece, color):
-		"""Removes a piece by setting its value equal to 0"""
-		start,end = self.colorRanges[color]
-		for index in range(start,end):
-			if self[index] == piece:
-				self[index] = 0
-				# self.emptySlots.add(index)
-				return self.typeLookup[index]
-		raise InvalidStateUpdateException(f'cannot remove piece')
+  def remove(self, piece, color):
+    """Removes a piece by setting its value equal to 0"""
+    start,end = self.colorRanges[color]
+    for index in range(start,end):
+      if self[index] == piece:
+        self[index] = 0
+        # self.emptySlots.add(index)
+        return self.typeLookup[index]
+    raise InvalidStateUpdateException(f'cannot remove piece')
 
-	def get_color(self, color):
-		"""Returns all pieces of the given color"""
-		start,stop = self.colorRanges[color]
-		for index in range(start,stop):
-			piece = self[index]
-			if piece == 0: continue
-			yield piece,self.typeLookup[index]
+  def get_color(self, color):
+    """Returns all pieces of the given color"""
+    start,stop = self.colorRanges[color]
+    for index in range(start,stop):
+      piece = self[index]
+      if piece == 0: continue
+      yield piece,self.typeLookup[index]
 
 
 class State:
-	"""Board Representation
+  """Board Representation
 
-	Can be updated with moves backwards and forwards. Impements Zobrist
-	hashing. State properties: PieceSet and occupancy bitboards (for all
-	pieces, for each color, and for each piece type). Printing it will
-	print a formatted board string.
-	"""
+  Can be updated with moves backwards and forwards. Impements Zobrist
+  hashing. State properties: PieceSet and occupancy bitboards (for all
+  pieces, for each color, and for each piece type). Printing it will
+  print a formatted board string.
+  """
 
-	def __init__(self, colorToMove, pieces):
-		self.colorToMove = colorToMove
-		self.pieces = PieceSet(pieces)
+  def __init__(self, colorToMove, pieces):
+    self.colorToMove = colorToMove
+    self.pieces = PieceSet(pieces)
 
-		# occupancy bitboards
-		self.pieceTypes = [0]*6 # 6 types: pawn,knight,bishop,rook,queen,king
-		self.colors = [0]*2 	# 2 colors: white, black
-		self.occupied = 0 		# all pieces
+    # occupancy bitboards
+    self.pieceTypes = [0]*6 # 6 types: pawn,knight,bishop,rook,queen,king
+    self.colors = [0]*2   # 2 colors: white, black
+    self.occupied = 0     # all pieces
 
-		# fill occupancy bitboards with pieces
-		for piece, pieceType, pieceColor in self.pieces:
-			self.pieceTypes[pieceType] 	|= piece
-			self.colors[pieceColor] 	|= piece
-			self.occupied 				|= piece
+    # fill occupancy bitboards with pieces
+    for piece, pieceType, pieceColor in self.pieces:
+      self.pieceTypes[pieceType] |= piece
+      self.colors[pieceColor] |= piece
+      self.occupied |= piece
 
-		# load zobrist table from file then compute initial hash value
-		self.hashTable = chess.pregame.load_hash_values()
-		pieceHashValues = map(self.hashTable.__getitem__, self.pieces)
-		self.hash = reduce(operator.xor, pieceHashValues, 0)
+    # load zobrist table from file then compute initial hash value
+    self.hashTable = chess.pregame.load_hash_values()
+    pieceHashValues = map(self.hashTable.__getitem__, self.pieces)
+    self.hash = reduce(operator.xor, pieceHashValues, 0)
 
-		self.history = []
+    self.history = []
 
-	def __add__(self, move):
-		"""Applies a move"""
-		self.history.append(move)
-		return self._update(move)
+  def __add__(self, move):
+    """Applies a move"""
+    self.history.append(move)
+    return self._update(move)
 
-	def __sub__(self, move):
-		"""Reverts a move"""
-		self.history.pop()
-		return self._update(move, reverse=True)
+  def __sub__(self, move):
+    """Reverts a move"""
+    self.history.pop()
+    return self._update(move, reverse=True)
 
-	def update_hash(self, pieceIn, pieceOut, movedPieceType, removedPieceType, color):
-		"""Rolling Zobrist Hash"""
+  def _update(self, move, reverse=False):
+    """Helper. Should not be called directly."""
 
-		# XOR out the previous piece
-		self.hash ^= self.hashTable[(pieceIn, movedPieceType, color)]
+    # define old/updated piece and moving color depending on move direction
+    p0,p1 = (move.end,move.start) if reverse else (move.start,move.end)
+    color = not self.colorToMove if reverse else self.colorToMove
 
-		# XOR in the updated piece
-		self.hash ^= self.hashTable[(pieceOut, movedPieceType, color)]
+    # update piece set
+    movedPieceType = self.pieces.update(p0, p1, color)
 
-		# if move was a capture, XOR out captured piece
-		if removedPieceType is not None:
-			self.hash ^= self.hashTable[(pieceOut,removedPieceType,not color)]
+    # Bitwise subtract the old piece from occupancy bitboards
+    self.pieceTypes[movedPieceType] &= ~p0
+    self.colors[color] &= ~p0
 
-	def __hash__(self):
-		return self.hash
+    # Bitwise union the updated piece from occupancy bitboards.
+    self.pieceTypes[movedPieceType] |= p1
+    self.colors[color] |= p1
 
-	def _update(self, move, reverse=False):
-		"""Helper. Should not be called directly."""
+    moveIsACapture = move.captureType is not None
+    if reverse and moveIsACapture:
+      # reversed capture, insert captured piece back into piece set.
+      self.pieces.insert(p0, move.captureType, not color)
+      self.pieceTypes[move.captureType] |= p0
+      self.colors[not color] |= p0
+    elif moveIsACapture:
+      # forward capture: remove captured piece from piece set
+      self.pieces.remove(p1, not color)
+      self.colors[not color] &= ~p1
 
-		# define old/updated piece and moving color depending on move direction
-		p0,p1 = (move.end,move.start) if reverse else (move.start,move.end)
-		color = not self.colorToMove if reverse else self.colorToMove
+      # subtract piece from pieceType occupancy bitboard unless
+      # the piece captured a piece of the same type
+      if movedPieceType != move.captureType:
+        self.pieceTypes[move.captureType] &= ~p1
 
-		# update piece set
-		movedPieceType = self.pieces.update(p0, p1, color)
+    # update board occupation with updated color bitboards
+    self.occupied = self.colors[0] | self.colors[1]
 
-		# Bitwise subtract the old piece from occupancy bitboards
-		self.pieceTypes[movedPieceType] &= ~p0
-		self.colors[color] &= ~p0
+    # update zobrist hash by XORing in/out the old/updated piece
+    self.update_hash(p0, p1, color, movedPieceType, move.captureType, reverse)
 
-		# Bitwise union the updated piece from occupancy bitboards.
-		self.pieceTypes[movedPieceType] |= p1
-		self.colors[color] |= p1
+    # update turn
+    self.colorToMove = not self.colorToMove
 
-		moveIsACapture = move.captureType is not None
-		if reverse and moveIsACapture:
-			# reversed capture, insert captured piece back into piece set.
-			self.pieces.insert(p0, move.captureType, not color)
-			self.pieceTypes[move.captureType] |= p0
-			self.colors[not color] |= p0
-		elif moveIsACapture:
-			# forward capture: remove captured piece from piece set
-			self.pieces.remove(p1, not color)
-			self.colors[not color] &= ~p1
+    return self
 
-			# subtract piece from pieceType occupancy bitboard unless
-			# the piece captured a piece of the same type
-			if movedPieceType != move.captureType:
-				self.pieceTypes[move.captureType] &= ~p1
+  def update_hash(self, pieceIn, pieceOut, color,
+                  movedPieceType, removedPieceType, reverse):
+    """Rolling Zobrist Hash"""
 
-		# update board occupation with updated color bitboards
-		self.occupied = self.colors[0] | self.colors[1]
+    # XOR out the piece bitboard before move
+    self.hash ^= self.hashTable[(pieceOut, movedPieceType, color)]
 
-		# update zobrist hash by XORing in/out the old/updated piece
-		self.update_hash(p0, p1,
-						 movedPieceType, move.captureType, color)
+    # XOR in the updated piece
+    self.hash ^= self.hashTable[(pieceIn, movedPieceType, color)]
 
-		# update turn
-		self.colorToMove = not self.colorToMove
+    # if move was a capture, XOR out captured piece
+    if removedPieceType is not None:
+      removedPiece = pieceOut if reverse else pieceIn
+      self.hash ^= self.hashTable[(removedPiece, removedPieceType, not color)]
 
-		return self
+  def __hash__(self):
+    return self.hash
 
-	def get_piece_type(self, piece):
-		"""Finds the given piece and returns its type"""
-		for pieceType, pieceSet in enumerate(self.pieceTypes):
-			if piece & pieceSet != 0:
-				return pieceType
-		raise PieceNotFoundException('Could not find piece type')
+  def get_piece_type(self, piece):
+    """Finds the given piece and returns its type"""
+    for pieceType, pieceSet in enumerate(self.pieceTypes):
+      if piece & pieceSet != 0:
+        return pieceType
+    raise PieceNotFoundException('Could not find piece type')
 
-	def __str__(self):
-		"""Returns a formatted board string"""
-		squares = ['.']*64 # empty square represented as '.'
-		for piece,pieceType,color in self.pieces:
-			isBitOn = lambda index: piece & (1 << (63-index)) != 0
-			square = list(map(isBitOn, range(64))).index(True)
-			squares[square] = PIECE_REPRESENTATION[color][pieceType]
-		formatRow = lambda r: '87654321'[r//8] + ' '.join(squares[r:r+8])
-		rows = map(formatRow, range(0,64,8))
-		return '\n'.join(map(formatRow, range(0,64,8))) + '\n a b c d e f g h'
+  def __str__(self):
+    """Returns a formatted board string"""
+    squares = ['.']*64 # empty square represented as '.'
+    for piece,pieceType,color in self.pieces:
+      isBitOn = lambda index: piece & (1 << (63-index)) != 0
+      square = list(map(isBitOn, range(64))).index(True)
+      squares[square] = PIECE_REPRESENTATION[color][pieceType]
+    formatRow = lambda r: '87654321'[r//8] + ' '.join(squares[r:r+8])
+    rows = map(formatRow, range(0,64,8))
+    return '\n'.join(map(formatRow, range(0,64,8))) + '\n a b c d e f g h'
 
 def create_initial_position():
-	"""Returns initial State, which can be configured in settings.py"""
-	return State(0, chess.pregame.load_initial_pieces())
+  """Returns initial State, which can be configured in settings.py"""
+  return State(0, chess.pregame.load_initial_pieces())
 
 #################################################################
-# PGN PARSING: IN PROGRESS                         				#
+# PGN PARSING: IN PROGRESS                                 #
 #################################################################
 
 testPgn = '''
@@ -241,23 +240,23 @@ import re
 
 # https://hub.gke.mybinder.org/user/ipython-ipython-in-depth-kjx9okko/notebooks/binder/pgnparsework.ipynb
 def parse_pgn(pgn):
-	# parse headers
-	headers = re.findall('\[.*\]',pgn)
+  # parse headers
+  headers = re.findall('\[.*\]',pgn)
 
-	# remove headers
-	pgn = re.sub('\[.*\]', '', pgn)
+  # remove headers
+  pgn = re.sub('\[.*\]', '', pgn)
 
-	# remove notes
-	pgn = re.sub('\{.*\}', '', pgn).lstrip()
+  # remove notes
+  pgn = re.sub('\{.*\}', '', pgn).lstrip()
 
-	pgn = pgn = re.sub('\n',' ', pgn.lstrip())
+  pgn = pgn = re.sub('\n',' ', pgn.lstrip())
 
-	match = '\d+\. (?:O-O|[a-zA-Z]+\d\+?) (?:O-O|[a-zA-Z]+\d\+?|1/2-1/2|1-0|0-1)'
-	turns = re.findall(match,pgn)
-	for turn in turns:
-		moveInfo,whiteMoveStr,blackMoveStr = moveStr.split(' ')
+  match = '\d+\. (?:O-O|[a-zA-Z]+\d\+?) (?:O-O|[a-zA-Z]+\d\+?|1/2-1/2|1-0|0-1)'
+  turns = re.findall(match,pgn)
+  for turn in turns:
+    moveInfo,whiteMoveStr,blackMoveStr = moveStr.split(' ')
 
-		moveNumber = moveInfo[0:moveInfo[0].index('.')]
+    moveNumber = moveInfo[0:moveInfo[0].index('.')]
 
 
-	return pgn
+  return pgn

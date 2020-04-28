@@ -3,7 +3,6 @@ from chess.pregame.board import (Bitboard, count_bits, reverse_bitboard,
                                  get_squares_from_bitboard)
 from chess.pregame.moves import get_rays,N,NE,E,SE,S,SW,W,NW
 from chess.pregame.masks import generate_ray_masks
-from debug import *
 
 ROOK_MAGICS = [
     0xa8002c000108020,0x6c00049b0002001,0x100200010090040,0x2480041000800801,
@@ -101,7 +100,7 @@ def generate_attack_masks():
     return bishopMasks, rookMasks
 
 def subtract_blockers(slider, occupied, mask):
-	"""Blocker subtraction by calculation
+  """Blocker subtraction by calculation
 
     Slow sliding piece move generation with o ^ (o - 2s) algorith. Used
     to  used to precompute magic tables
@@ -109,31 +108,22 @@ def subtract_blockers(slider, occupied, mask):
     https://www.chessprogramming.org/Subtracting_a_Rook_from_a_Blocking_Piece
     """
 
-	# calculate positive rays
-	potentialBlockers = occupied & mask
-	positiveRay = occupied ^ (potentialBlockers - (slider*2)) # o-2s
-	positiveRay = positiveRay & mask
+  # calculate positive rays
+  potentialBlockers = occupied & mask
+  positiveRay = occupied ^ (potentialBlockers - (slider*2)) # o-2s
+  positiveRay = positiveRay & mask
 
-	# reverse the Bitboards, then get negative rays
-	occupiedReversed = reverse_bitboard(occupied)
-	maskReversed = reverse_bitboard(mask)
-	sliderReversed = reverse_bitboard(slider)
+  # reverse the Bitboards, then get negative rays
+  occupiedReversed = reverse_bitboard(occupied)
+  maskReversed = reverse_bitboard(mask)
+  sliderReversed = reverse_bitboard(slider)
 
-	potentialBlockers = occupiedReversed & maskReversed
-	negativeRay = occupiedReversed ^ (potentialBlockers - (sliderReversed*2))
-	negativeRay = reverse_bitboard(negativeRay & maskReversed)
+  potentialBlockers = occupiedReversed & maskReversed
+  negativeRay = occupiedReversed ^ (potentialBlockers - (sliderReversed*2))
+  negativeRay = reverse_bitboard(negativeRay & maskReversed)
 
-	# combine positive and negative rays into one Bitboard
-	return positiveRay | negativeRay
-
-
-# def get_blockers(piece,attackMask):
-#     attackSquares = get_squares_from_bitboard(attackMask)
-#     blockers = 0
-#     for i in range(len(attackSquares)):
-#         if index & (1 << i):
-#             blockers |= (1 << attackSquares[i])
-#     return blockers
+  # combine positive and negative rays into one Bitboard
+  return positiveRay | negativeRay
 
 def create_magic_bitboard_tables():
     bishopAttacks, rookAttacks = generate_attack_masks()
