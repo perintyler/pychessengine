@@ -98,9 +98,17 @@ class Generator:
     magicKey = (blockers * magicBitboard) >> (64 - numAttackIndecies)
     return magic.cache[piece][magicKey]
 
-  def find_moves(self, state, attacks, attackSets, onlyCaptures=False):
+  def find_captures(self, state, attacks, attackSets):
+    return self.find_moves(state, attacks, attackSets, minCaptureStrength = -6)
+
+  def find_strong_captures(self, state, attacks, attackSets, findTrades=False):
+    return self.find_moves(state, attacks, attackSets,
+                           minCaptureStrength = 0 if findTrades else 1)
+
+  def find_moves(self, state, attacks, attackSets, minCaptureStrength=None):
     """Returns a Move Ordering Priority Queue with legal moves"""
 
+    onlyCaptures = minCaptureStrength is not None
     moves = MoveOrdering()
 
     color = state.colorToMove
@@ -149,19 +157,25 @@ class Generator:
           isACapture = moveBitboard & enemies != 0
           if isACapture:
             captureType = state.get_piece_type(moveBitboard)
-            get_piece_rank = lambda pt: pt-1 if pt>1 else pt
+
+            # piece rank sets bishop and knight to be same value
+            get_piece_rank = lambda pt: pt-1 if pt>=2 else pt
 
             captureStrength = get_piece_rank(captureType) \
                             - get_piece_rank(pieceType)
 
             move = Move(piece, moveBitboard, pieceType, color,
-                        captureType, -1, False)
+                        captureType, captureStrength, False)
           else:
             move = Move(piece, moveBitboard, pieceType,
-                        color, None, -1, False)
+                        color, None, None, False)
 
-          if onlyCaptures and move.captureStrength < 0: continue
+
+          if onlyCaptures and (move.captureType is None
+              or minCaptureStrength > move.captureStrength): continue
+
           moves.push(move)
+
 
     return moves
 

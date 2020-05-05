@@ -7,16 +7,15 @@ import settings
 import chess.moves
 import chess.board
 
-# from debug import *
+from debug import SearchMonitor
 
-# monitor = SearchMonitor() # Debug Tool
+monitor = SearchMonitor() # Debug Tool
 # builder = TreeBuilder()   # Debug Tool
 
 MAX_VALUE = 1000
 
-def explore_leaves(state, evaluator, generator,
-           maximize, alpha, beta, depth,
-           maxDepth, maxValue, isQuiet=True):
+def explore_leaves(state, evaluator, generator, maximize,
+                   alpha, beta, depth, maxDepth, maxValue, isQuiet=True):
   """Minimax Alpha-Beta Search
 
   This recursive function preforms a depth first tree search. The nodes
@@ -35,14 +34,23 @@ def explore_leaves(state, evaluator, generator,
   if depth >= maxDepth and isQuiet:
     return evaluator(state, attacks)
 
-  # monitor.node_searched(depth)
+  monitor.node_searched(depth)
 
-  # only search captures if depth surpassed max depth
-  moves = generator.find_moves(state, attacks, attackSets)
-                               #onlyCaptures = depth > maxDepth and not isQuiet)
+  # only search captures if depth surpassed max depth. If the max depth
+  # is surpassed and it's quiet, search all moves, but use stop search
+  # parameter to make it the last search on this branch
+  if depth < maxDepth:
+    moves = generator.find_moves(state, attacks, attackSets)
+  elif depth == maxDepth:
+    moves = generator.find_captures(state,attacks,attackSets)
+  else:
+    moves = generator.find_strong_captures(state, attacks, attackSets,
+                                           findTrades = depth == maxDepth+1)
+
 
   if len(moves) == 0:
-    assert depth > maxDepth
+    assert depth >= maxDepth
+
     return evaluator(state, attacks)
 
   # sorting moves everytime seems to speed things up
@@ -50,15 +58,15 @@ def explore_leaves(state, evaluator, generator,
   while len(moves) > 0:
     m = moves.pop()
     state+=m
-    v = evaluator(state,attacks)
+    v = evaluator(state,attacks, mode=0)
     moveOrder.append((v,m))
     state-=m
   moves = sorted(moveOrder, key=lambda x:x[0], reverse=state.colorToMove==1)
   moves = [m[1] for m in moves]
 
   # beam search
-  if depth == maxDepth-2: moves = moves[-10:]
-  if depth >= maxDepth: moves = moves[-5:]
+  if depth == maxDepth-1: moves = moves[-10:]
+  # if depth >= maxDepth: moves = moves[-5:]
 
   # initilize best as worst value
   best = -maxValue if maximize else maxValue
@@ -72,6 +80,7 @@ def explore_leaves(state, evaluator, generator,
 
     # get child node by updating state
     state += move
+
 
     # make recursive call to perform depth first search
     value = explore_leaves(state, evaluator, generator,
@@ -91,19 +100,20 @@ def explore_leaves(state, evaluator, generator,
       beta = min(beta,best)
       bestMove = move
 
-  # if beta<=alpha: monitor.cutoff(maximize)
+  if beta<=alpha: monitor.cutoff(maximize)
 
   # if depth is 0, the search is complete
-  return bestMove if depth == 0 else best
+  return (best,bestMove) if depth == 0 else best
 
 def make_best_move(state, evaluator, generator):
   alpha,beta = -MAX_VALUE,MAX_VALUE
   maximizeRoot = not state.colorToMove # maximize white
   depth,maxDepth = 0,settings.SEARCH_DEPTH
 
-  bestMove = explore_leaves(state, evaluator, generator,
-                            maximizeRoot, alpha, beta,
-                            depth, maxDepth, MAX_VALUE)
+  leafEvaluation, bestMove = explore_leaves(state, evaluator, generator,
+                                            maximizeRoot, alpha, beta,
+                                            depth, maxDepth, MAX_VALUE)
+  print('leaf eval: ' + str(leafEvaluation))
   state += bestMove
 
 def play_computer_game():
@@ -113,7 +123,9 @@ def play_computer_game():
   state = chess.board.create_initial_position()
   generator = chess.moves.Generator()
   evaluator = chess.board.Evaluator()
+
   print(state)
+
   movesMade = 0
   while movesMade < MAX_MOVES:
     movesMade += 1
@@ -122,7 +134,12 @@ def play_computer_game():
     end = time.time()
     print('found move in ' + str(end - start) + ' seconds')
 
-    # monitor.print_results()
+    scores = evaluator.get_scores(1)
+    attacks,attacksets = generator.find_attacks(state)
+    for label,score,w in zip(['material','pst','center control', 'development', 'tempo', 'connectivity'],scores,evaluator.weights):
+      print('\t',label,': ', score(state, attacks)*w)
+
+    monitor.print_results()
     # monitor.reset()
     valuation = evaluator(state, generator.find_attacks(state)[0])
     print('valuation: ' + str(valuation))

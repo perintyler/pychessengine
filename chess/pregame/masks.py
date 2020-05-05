@@ -146,14 +146,39 @@ def generate_center_square_masks():
   return list(map(create_mask, centerSquares))
 
 def generate_minor_piece_mask():
+  """Development mask
+
+  Minor Pieces: knight, bishop
+
+
+  White Minor piece masks  Black Minor piece masks
+        00000000                0XX00XX0
+        00000000                00000000
+        00000000                00000000
+        00000000                00000000
+        00000000                00000000
+        00000000                00000000
+        00000000                00000000
+        0XX00XX0                00000000
+  """
   whitePieceMasks = map(create_mask,['B1', 'C1', 'F1', 'G1'])
   blackPieceMasks = map(create_mask,['B8', 'C8', 'F8', 'G8'])
   return list(whitePieceMasks), list(blackPieceMasks)
 
 def generate_castle_masks():
   """Generates a bitboard for castle square for each castle type
-  TODO: ADD EXAMPLE
-  """
+
+            Each square marked by an x gets its own mask.
+
+                              00000000
+                              00000000
+                              00000000
+                              000XX000
+                              000XX000
+                              00000000
+                              00000000
+                              00000000
+ """
   castleSquares = (
     ['D1', 'C1', 'B1'], # QUEENSIDE WHITE
     ['D8', 'C8', 'B8'], # QUEENSIDE BLACK
@@ -164,6 +189,9 @@ def generate_castle_masks():
 
   return { 'queenside': castleMasks[0:2], 'kingside': castleMasks[2:4] }
 
+def create_king_attack_zone_masks():
+  pass
+  
 def generate_masks():
   return {
     **generate_ray_masks(),

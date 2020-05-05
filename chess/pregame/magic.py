@@ -1,8 +1,5 @@
-from chess.pregame.board import (Bitboard, count_bits, reverse_bitboard,
-                                 get_square, get_coordinate, parse_notation,
-                                 get_squares_from_bitboard)
-from chess.pregame.moves import get_rays,N,NE,E,SE,S,SW,W,NW
-from chess.pregame.masks import generate_ray_masks
+from chess.pregame.board import *
+from chess.pregame.moves import get_rays, N, NE, E, SE, S, SW, W, NW
 
 ROOK_MAGICS = [
     0xa8002c000108020,0x6c00049b0002001,0x100200010090040,0x2480041000800801,
@@ -80,7 +77,7 @@ def generate_attack_masks():
     FILEA = create_ray_mask(0,N)  | Bitboard(0)
     FILEH = create_ray_mask(63,S) | Bitboard(63)
     EDGES = RANK8 | RANK1 | FILEA | FILEH
-
+    
     rookMasks,bishopMasks = {},{}
     for square in range(64):
         squareMask = Bitboard(square)

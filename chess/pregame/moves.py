@@ -5,7 +5,6 @@ from chess.pregame.board import get_coordinate,get_square,Bitboard,WHITE,BLACK
 
 PIECE_TYPES = [PAWN,KNIGHT,BISHOP,ROOK,QUEEN,KING] = range(6)
 
-
 class MoveCache:
 
   def __init__(self, pieceType, find_moves):
@@ -81,7 +80,7 @@ def get_move_finder(pieceType):
     onStartRank = y == {WHITE: 6, BLACK: 1}[color]
     numSteps = 2 if onStartRank else 1
     moves = [(x, y+step*forward) for step in range(numSteps)]
-    attacks = [(x+horizontal, y+forward) for horizontal in [-1,1]]
+    attacks = [(x+1, y+forward), (x-1, y+forward)]
     return get_valid_squares(moves), get_valid_squares(attacks)
 
   def find_knight_moves(x,y):
@@ -89,22 +88,16 @@ def get_move_finder(pieceType):
     directions = ([(v,h),(h,v)] for v in [N,S] for h in [W,E])
     return [makeKnightMove(d1,d2) for d1,d2 in sum(directions,[])]
 
-  def find_bishop_moves(x,y): return get_rays(x,y,diagonalsDirections)
-  def find_rook_moves(x,y):   return get_rays(x,y,straightDirections)
-  def find_queen_moves(x,y):  return get_rays(x,y,allDirections)
-  def find_king_moves(x,y):   return get_rays(x,y,allDirections,numSteps=1)
-
   def find_moves(square):
     x,y = get_coordinate(square)
     if   pieceType == KNIGHT: moves = find_knight_moves(x,y)
-    elif pieceType == BISHOP: moves = find_bishop_moves(x,y)
-    elif pieceType == ROOK:   moves = find_rook_moves(x,y)
-    elif pieceType == QUEEN:  moves = find_queen_moves(x,y)
-    else:                     moves = find_king_moves(x,y)
+    elif pieceType == BISHOP: moves = get_rays(x, y, diagonalsDirections)
+    elif pieceType == ROOK:   moves = get_rays(x,y,straightDirections)
+    elif pieceType == QUEEN:  moves = get_rays(x, y, allDirections)
+    else:                     moves = get_rays(x,y,allDirections,numSteps=1) # king
     return get_valid_squares(moves)
 
-  if pieceType != PAWN:
-    return find_moves
+  if pieceType != PAWN: return find_moves
   else:
     def get_white_moves(square): return find_pawn_moves(square, WHITE)
     def get_black_moves(square): return find_pawn_moves(square, BLACK)

@@ -31,6 +31,8 @@ class PieceSet(list):
      self.colorLookup,
      self.colorRanges) = chess.pregame.load_piece_index_values()
 
+    self.colorCounts = [end-start for start,end in self.colorRanges]
+
   def __iter__(self):
     """Iterates each piece's bitboard, color, and type.
 
@@ -55,6 +57,7 @@ class PieceSet(list):
 
   def insert(self, piece, pieceType, color):
     """Inserts a piece by finding an empty slot"""
+    self.colorCounts[color] += 1
     start,end = self.colorRanges[color]
     for index in range(start,end):
       # slot must be empty and the index must be for
@@ -70,6 +73,7 @@ class PieceSet(list):
 
   def remove(self, piece, color):
     """Removes a piece by setting its value equal to 0"""
+    self.colorCounts[color] -= 1
     start,end = self.colorRanges[color]
     for index in range(start,end):
       if self[index] == piece:
@@ -86,6 +90,8 @@ class PieceSet(list):
       if piece == 0: continue
       yield piece,self.typeLookup[index]
 
+  def size(self, color):
+    return self.colorCounts[color]
 
 class State:
   """Board Representation
@@ -115,7 +121,6 @@ class State:
     self.hashTable = chess.pregame.load_hash_values()
     pieceHashValues = map(self.hashTable.__getitem__, self.pieces)
     self.hash = reduce(operator.xor, pieceHashValues, 0)
-
     self.history = []
 
   def __add__(self, move):
@@ -136,14 +141,14 @@ class State:
     color = not self.colorToMove if reverse else self.colorToMove
 
     # update piece set
-    movedPieceType = self.pieces.update(p0, p1, color)
+    self.pieces.update(p0, p1, color)
 
     # Bitwise subtract the old piece from occupancy bitboards
-    self.pieceTypes[movedPieceType] &= ~p0
+    self.pieceTypes[move.pieceType] &= ~p0
     self.colors[color] &= ~p0
 
     # Bitwise union the updated piece from occupancy bitboards.
-    self.pieceTypes[movedPieceType] |= p1
+    self.pieceTypes[move.pieceType] |= p1
     self.colors[color] |= p1
 
     moveIsACapture = move.captureType is not None
@@ -159,14 +164,15 @@ class State:
 
       # subtract piece from pieceType occupancy bitboard unless
       # the piece captured a piece of the same type
-      if movedPieceType != move.captureType:
+      if move.pieceType != move.captureType:
         self.pieceTypes[move.captureType] &= ~p1
 
     # update board occupation with updated color bitboards
     self.occupied = self.colors[0] | self.colors[1]
 
     # update zobrist hash by XORing in/out the old/updated piece
-    self.update_hash(p0, p1, color, movedPieceType, move.captureType, reverse)
+    self.update_hash(p0, p1, color, move.pieceType, move.captureType, reverse)
+    self.hash ^= 0xF8D626AAAF278509
 
     # update turn
     self.colorToMove = not self.colorToMove
@@ -187,9 +193,6 @@ class State:
     if removedPieceType is not None:
       removedPiece = pieceOut if reverse else pieceIn
       self.hash ^= self.hashTable[(removedPiece, removedPieceType, not color)]
-
-  def __hash__(self):
-    return self.hash
 
   def get_piece_type(self, piece):
     """Finds the given piece and returns its type"""

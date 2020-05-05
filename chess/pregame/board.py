@@ -55,7 +55,7 @@ def get_coordinate(square):
 def parse_notation(notation):
   """"""
   file = 'ABCDEFGH'.index(notation[0])
-  rank = 8-int(notation[1])
+  rank = 8 - int(notation[1])
   return rank*8 + file
 
 def generate_hash_table():
@@ -157,9 +157,10 @@ def setup_pieces():
     with open('data/config/pst.json') as f:
       pstConfig = json.load(f)
 
+    pstPieceWeights = [10, 28, 32, 48, 93, 6000]
     PIECE_SQUARE_TABLES = pstConfig['pst']
     whiteLookups,blackLookups = [],[]
-    for table in PIECE_SQUARE_TABLES:
+    for pieceType, table in enumerate(PIECE_SQUARE_TABLES):
 
       whiteLookupForPiece,blackLookupForPiece = {},{}
       for square in range(64):
@@ -168,8 +169,9 @@ def setup_pieces():
         x,y = get_coordinate(square)
         flippedSquare = get_square(x,7-y)
         flippedSquareBitboard = Bitboard(flippedSquare)
-        whiteLookupForPiece[flippedSquareBitboard] = table[square]
-        blackLookupForPiece[squareBitboard] = table[square]
+        pieceWeight = pstPieceWeights[pieceType]
+        whiteLookupForPiece[flippedSquareBitboard] = table[square] * pieceWeight
+        blackLookupForPiece[squareBitboard] = table[square] * pieceWeight
 
       whiteLookups.append(whiteLookupForPiece)
       blackLookups.append(blackLookupForPiece)
