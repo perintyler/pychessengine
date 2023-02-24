@@ -1,7 +1,15 @@
-
 <p align="center">
   <img src="https://imgur.com/6yXDJUw.png"/>
 </p>
+
+# pychessengine
+
+`pychessengine` is a pure-python chess engine and learning tool. It supports:
+- [minimax](https://en.wikipedia.org/wiki/Minimax)
+- [alpha-beta pruning](https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning)
+- [magic bitboards](https://www.chessprogramming.org/Magic_Bitboards)
+- [MVV-LVA](https://www.chessprogramming.org/MVV-LVA)
+- [Zobrist Hashing](https://en.wikipedia.org/wiki/Zobrist_hashing)
 
 # Board Representation
 
